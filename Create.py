@@ -4,7 +4,6 @@ import pymysql
 def exec_sql_file(cursor, sql_file):
     print("[INFO] Executing SQL script file: '%s'" % sql_file)
     statement = ""
-
     for line in open(sql_file):
         if line.strip().startswith('--'):   # ignore sql comment lines
             continue
@@ -17,5 +16,4 @@ def exec_sql_file(cursor, sql_file):
                 cursor.execute(statement)
             except pymysql.InternalError as e:
                 print("[WARN] MySQLError during execute statement \n\tArgs: '%s'" % (str(e.args)))
-
             statement = ""

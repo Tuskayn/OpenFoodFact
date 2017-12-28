@@ -14,7 +14,7 @@ CREATE TABLE Categories (
 -- Table: Historic
 CREATE TABLE Historic (
     id int NOT NULL AUTO_INCREMENT,
-    Products_id bigint NOT NULL,
+    Products_id int NOT NULL,
     CONSTRAINT Historic_pk PRIMARY KEY (id)
 );
 
@@ -22,13 +22,13 @@ CREATE TABLE Historic (
 CREATE TABLE Product_categories (
     id int NOT NULL AUTO_INCREMENT,
     Categories_id int NOT NULL,
-    Products_id bigint NOT NULL,
+    Products_id int NOT NULL,
     CONSTRAINT Product_categories_pk PRIMARY KEY (id)
 );
 
 -- Table: Products
 CREATE TABLE Products (
-    id bigint NOT NULL AUTO_INCREMENT,
+    id int NOT NULL AUTO_INCREMENT,
     name varchar(100) NULL,
     brands varchar(100) NULL,
     url varchar(200) NULL,
