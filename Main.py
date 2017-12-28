@@ -74,6 +74,9 @@ def categories_browser():
         categories = get_categories()
         print("Il y a {} catégories.".format(len(categories)))
         print("Sélectionnez une catégorie:")
+        if len(categories)-page_max < 10:
+            page_max = len(categories)
+            page_min = page_max-10
         for i in range(page_min, page_max):
             print("{} - {}".format(categories[i].id, categories[i].name))
 
