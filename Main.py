@@ -49,7 +49,8 @@ def update_categories():
     cursor = cnx.cursor()
     cursor.execute('ALTER TABLE Product_categories DROP FOREIGN KEY Link_Categories')
     cursor.execute('TRUNCATE categories')
-    cursor.execute('ALTER TABLE Product_categories ADD CONSTRAINT Link_Categories FOREIGN KEY Link_Categories (Categories_id) REFERENCES Categories (id);')
+    cursor.execute('ALTER TABLE Product_categories ADD CONSTRAINT Link_Categories\
+                    FOREIGN KEY Link_Categories (Categories_id) REFERENCES Categories (id);')
     # clear result from useless data
     cleared_categories = list()
     for element in categories['tags']:
@@ -74,9 +75,18 @@ def categories_browser():
         categories = get_categories()
         print("Il y a {} catégories.".format(len(categories)))
         print("Sélectionnez une catégorie:")
-        if len(categories)-page_max < 10:
-            page_max = len(categories)
-            page_min = page_max-10
+
+        # Test overflow
+        if len(categories)-page_max < 10 < page_max:
+            page_max += len(categories)-page_max
+            if page_max < 10:
+                page_min = 0
+            else:
+                page_min = page_max-10
+        if page_min < 0:
+            page_min = 0
+            page_max = 10
+
         for i in range(page_min, page_max):
             print("{} - {}".format(categories[i].id, categories[i].name))
 
@@ -86,7 +96,7 @@ def categories_browser():
 
         if uinput == '0':
             break
-        if uinput == '>' and page_max < len(categories):
+        if uinput == '>':
             page_max += 10
             page_min += 10
         if uinput == '<' and page_min > 0:
@@ -94,8 +104,149 @@ def categories_browser():
             page_min -= 10
 
         if uinput.isdigit():
-            # appel de fonction qui ouvre la catégorie ciblé
+            category_product_browser(int(uinput)-1)
             continue
+
+
+def category_product_browser(category_id):
+    category_page = 1
+    category_products = get_products_from_category(categories[category_id].url, category_page)
+    while "user won't quit":
+        print("Affichage des produits de la catégorie {} | Page : {}".format(categories[category_id].name,
+                                                                             category_page))
+        for i in range(min(20, len(category_products))):
+            print("{} - {} {}".format(i+1, category_products[i].name, category_products[i].brands))
+
+        uinput = input("Entrez: Numéro - selectionner un produit "
+                       "| > page suivante | < page précédente "
+                       "| 0 - revenir aux catégories\n")
+
+        if uinput == '0':
+            break
+        if uinput == '>':
+            category_page += 1
+            category_products = get_products_from_category(categories[category_id].url, category_page)
+        if uinput == '<' and category_page > 1:
+            category_page -= 1
+            category_products = get_products_from_category(categories[category_id].url, category_page)
+        if uinput.isdigit():
+            product_browser(category_products[int(uinput) - 1], categories[category_id].name)
+            continue
+
+
+def product_browser(product, category_name):
+    while "user won't quit":
+        # Display selected product
+        print("\t<__/ Fiche du Produit \__>\n")
+        print("Nom du produit : " + product.name)
+        print("Marques : " + product.brands)
+        print("Nutri-score : " + product.nutrition_grade.upper())
+        print("Repères nutritionnels pour 100g :")
+        print("\tLipides : " + str(product.fat))
+        print("\tAcides gras saturés : " + str(product.saturated_fat))
+        print("\tSucres : " + str(product.sugars))
+        print("\tSel : " + str(product.salt))
+        print("URL : " + product.url)
+
+        uinput = input("(Entrez: S - Substituer | E - Enregistrer |"
+                       " 0 - Revenir aux produits de {})\n".format(category_name))
+
+        if uinput is '0':
+            break
+
+        if uinput.lower() == 's':
+            substitutes_browser(product)
+
+        if uinput.lower() == 'e':
+            # SAVE def
+            continue
+
+
+def substitutes_browser(product):
+    substitutes = get_substitutes(product)
+    page_min = 0
+    page_max = 10
+    while "user won't quit":
+
+        # Test overflow
+        if len(substitutes)-page_max < 10 < page_max:
+            page_max += len(substitutes)-page_max
+            if page_max < 10:
+                page_min = 0
+            else:
+                page_min = page_max-10
+        if page_min < 0:
+            page_min = 0
+            page_max = 10
+
+        print("Liste des {} substitution pour le produit \"{}\" : \n".format(len(substitutes), product.name))
+        if len(substitutes) == 0:
+            print("Vous utilisez déjà un produit sain selon OpenFoodFacts.\nRetour à la fiche produit.\n")
+            break
+        else:
+            for i in range(page_min, page_max):
+                print("{} - {} {}".format(i + 1, substitutes[i].name, substitutes[i].brands))
+
+        uinput = input("Entrez: Numéro - selectionner un produit | > - page suivante |"
+                       " < - page précedente | 0 - revenir au produit\n")
+
+        if uinput is '0':
+            break
+        if uinput.isdigit():
+            product_browser(substitutes[int(uinput)-1], "substitution de {}".format(product.name))
+            continue
+        if uinput == '>':
+            page_min += 10
+            page_max += 10
+        if uinput == '<' and page_min > 0:
+            page_min -= 10
+            page_max -= 10
+
+
+def get_substitutes(product):
+    """Get a list of healthier products from the selected one"""
+    url = "cgi/search.pl?tagtype_0=categories&tag_contains_0=contains&tag_0={}" \
+          "&page_size=500&page=1&action=process&json=1"
+    result = fetch(url.format(product.category))
+    products = list()
+    for element in result['products']:
+        # Check for data matching
+        if not all(k in element for k in ("product_name", "brands", "id", "nutrition_grade_fr", "url",
+                                          "categories_prev_tags")):
+            continue
+        if not all(k in element['nutriments'] for k in ("fat_100g", "saturated-fat_100g", "sugars_100g", "salt_100g")):
+            continue
+
+        # Nutri test
+        if element["nutrition_grade_fr"] >= product.nutrition_grade:
+            continue
+
+        products.append(Product(element['id'], element['product_name'], element['brands'],
+                                element['nutrition_grade_fr'], element['nutriments']['fat_100g'],
+                                element['nutriments']['saturated-fat_100g'], element['nutriments']['sugars_100g'],
+                                element['nutriments']['salt_100g'], element['url'],
+                                element['categories_prev_tags'][-1]))
+    return products
+
+
+def get_products_from_category(url, page):
+    result = requests.get("{}/{}.json".format(url, page)).json()
+    products = list()
+    for element in result['products']:
+        # Check for data matching
+        if not all(tag in element for tag in ("product_name", "brands", "id", "nutrition_grade_fr", "url",
+                                              "categories_prev_tags")):
+            continue
+        if not all(tag in element['nutriments'] for tag in ("fat_100g", "saturated-fat_100g",
+                                                            "sugars_100g", "salt_100g")):
+            continue
+
+        products.append(Product(element['id'], element['product_name'], element['brands'],
+                                element['nutrition_grade_fr'], element['nutriments']['fat_100g'],
+                                element['nutriments']['saturated-fat_100g'], element['nutriments']['sugars_100g'],
+                                element['nutriments']['salt_100g'], element['url'],
+                                element['categories_prev_tags'][-1]))
+    return products
 
 
 def user_menu():

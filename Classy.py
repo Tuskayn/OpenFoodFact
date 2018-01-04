@@ -8,7 +8,7 @@ class Categorie:
 
 class Product:
     """OpenFoodFacts Product"""
-    def __init__(self, id, name, brands, nutrition_grade, fat, saturated_fat, sugars, salt, url):
+    def __init__(self, id, name, brands, nutrition_grade, fat, saturated_fat, sugars, salt, url, category):
         self.id = id
         self.name = name
         self.brands = brands
@@ -18,3 +18,4 @@ class Product:
         self.sugars = sugars
         self.salt = salt
         self.url = url
+        self.category = category
