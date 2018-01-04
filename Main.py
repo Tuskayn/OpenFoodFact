@@ -45,12 +45,10 @@ def get_categories():
 
 def update_categories():
     """DROP old categories, download new from API then stock into the DB"""
+    global categories
     categories = fetch("categories")
     cursor = cnx.cursor()
-    cursor.execute('ALTER TABLE Product_categories DROP FOREIGN KEY Link_Categories')
     cursor.execute('TRUNCATE categories')
-    cursor.execute('ALTER TABLE Product_categories ADD CONSTRAINT Link_Categories\
-                    FOREIGN KEY Link_Categories (Categories_id) REFERENCES Categories (id);')
     # clear result from useless data
     cleared_categories = list()
     for element in categories['tags']:
@@ -60,7 +58,7 @@ def update_categories():
             continue
         cleared_categories.append(element)
     for element in cleared_categories:
-        cursor.execute("INSERT INTO categories(name, url) VALUES (%s, %s)",
+        cursor.execute('INSERT INTO Categories(name, url) VALUES (%s, %s)',
                        (element['name'], element['url']))
     cursor.close()
     cnx.commit()
@@ -109,6 +107,7 @@ def categories_browser():
 
 
 def category_product_browser(category_id):
+    global categories
     category_page = 1
     category_products = get_products_from_category(categories[category_id].url, category_page)
     while "user won't quit":
@@ -158,7 +157,7 @@ def product_browser(product, category_name):
             substitutes_browser(product)
 
         if uinput.lower() == 'e':
-            # SAVE def
+            save_product(product)
             continue
 
 
@@ -249,6 +248,64 @@ def get_products_from_category(url, page):
     return products
 
 
+def save_product(product):
+    """Save the selected product in the DB"""
+    cursor = cnx.cursor(pymysql.cursors.DictCursor)
+    cursor.execute("SELECT * FROM Products")
+    result = cursor.fetchall()
+    exist = 0
+    for element in result:
+        # Test if the product already exist in the DB
+        if element['url'] == product.url:
+            exist = 1
+            break
+    if exist == 1:
+        print("Produit déjà enregistré.")
+    else:
+        cursor.execute('INSERT INTO Products(name, brands, url, nutrition_grade, fat, saturated_fat, sugars, salt, category)\
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)', (product.name, product.brands, product.url,
+                                                                   product.nutrition_grade, product.fat,
+                                                                   product.saturated_fat, product.sugars, product.salt,
+                                                                   product.category))
+        print("Produit sauvegardé.")
+    cursor.close()
+    cnx.commit()
+
+
+def get_products_from_db():
+    """Get a list of products from the database"""
+    cursor = cnx.cursor(pymysql.cursors.DictCursor)
+    cursor.execute("SELECT * FROM Products")
+    result = cursor.fetchall()
+    cursor.close()
+    products = list()
+    for element in result:
+        products.append(Product(element['id'], element['name'], element['brands'], element['nutrition_grade'],
+                                element['fat'], element['saturated_fat'], element['sugars'],
+                                element['salt'], element['url'], element['category']))
+    return products
+
+
+def product_browser_from_db():
+    """Display the user's saved product from the DB"""
+    products = get_products_from_db()
+    while "User won't exit":
+        print("<__/ Liste des produits enregistrés \__>")
+        for i in range(min(10, len(products))):
+            print("{} - {} {}".format(i+1, products[i].name, products[i].brands))
+        uinput = input("(Entrez: Numéro - selectionner un produit | S - page suivante |"
+                       " P - page précedente | 0 - revenir au menu principal)\n")
+
+        # Exit substitute manager
+        if uinput is '0':
+            break
+
+        # Select product
+        if uinput.isdigit():
+            product_browser(products[int(uinput)-1], "vote liste")
+            continue
+
+
 def user_menu():
     global new
     if new == 1:
@@ -266,6 +323,7 @@ def user_menu():
             categories_browser()
             continue
         if uinput == '2':
+            product_browser_from_db()
             continue
         if uinput == '3':
             print("Mise à jour des catégories en cours...")
@@ -275,4 +333,4 @@ def user_menu():
             break
 
 user_menu()
-print("\n\t  <__/ Aurevoir \__>")
+print("\t  <__/ Aurevoir \__>")
