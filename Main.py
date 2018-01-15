@@ -6,6 +6,7 @@ from Create import exec_sql_file
 
 API_URL = 'https://fr.openfoodfacts.org/'
 categories = list()
+products = list()
 new = 0
 try:
     cnx = pymysql.connect(user='root',
@@ -31,38 +32,72 @@ def fetch(path):
     return response.json()
 
 
-def get_categories():
+def get_categories_from_db():
     """Get all categories from the DB"""
     cursor = cnx.cursor(pymysql.cursors.DictCursor)
-    cursor.execute('SELECT id, name, url FROM categories')
+    cursor.execute('SELECT id, prod_cat, name, url FROM categories')
     result = cursor.fetchall()
     cursor.close()
     categories = list()
     for element in result:
-        categories.append(Categorie(element['id'], element['name'], element['url']))
+        categories.append(Categorie(element['id'], element['prod_cat'], element['name'], element['url']))
     return categories
 
 
-def update_categories():
-    """DROP old categories, download new from API then stock into the DB"""
+def update():
+    """DROP old data and get fresh new one"""
     global categories
     categories = fetch("categories")
     cursor = cnx.cursor()
     cursor.execute('TRUNCATE categories')
+    cursor.execute('TRUNCATE Products')
     # clear result from useless data
     cleared_categories = list()
     for element in categories['tags']:
-        if element['products'] < 10:
+        if element['products'] < 50:
             continue
-        if element['id'][:3] in ['en:', 'ru:', 'de:', 'es:']:
+        if element['id'][:3] not in ['en:', 'fr:']:
             continue
         cleared_categories.append(element)
     for element in cleared_categories:
-        cursor.execute('INSERT INTO Categories(name, url) VALUES (%s, %s)',
-                       (element['name'], element['url']))
-    cursor.close()
+        cursor.execute('INSERT INTO Categories(prod_cat, name, url) VALUES (%s, %s, %s)',
+                       (element['id'], element['name'], element['url']))
     cnx.commit()
-    print("Catégories mises à jour.")
+    cursor.close()
+    print("Catégories à jour, mise à jour des produits...")
+    get_products_from_france()
+    print("Données à jour.")
+
+
+def get_products_from_france():
+    global products
+    page = 170
+    result = requests.get(
+        "https://fr.openfoodfacts.org/cgi/search.pl?page_size=1000&page={}&action=process&json=1".format(page)).json()
+    while page < 180:
+        for element in result['products']:
+            # Check for data matching
+            if not all(tag in element for tag in ("product_name", "brands", "id", "nutrition_grade_fr", "url",
+                                                  "categories_prev_tags")):
+                continue
+            if not all(tag in element['nutriments'] for tag in ("fat_100g", "saturated-fat_100g",
+                                                                "sugars_100g", "salt_100g")):
+                continue
+            if not element['categories_prev_tags']:
+                continue
+            products.append(Product(element['id'], element['product_name'], element['brands'],
+                                    element['nutrition_grade_fr'], element['nutriments']['fat_100g'],
+                                    element['nutriments']['saturated-fat_100g'], element['nutriments']['sugars_100g'],
+                                    element['nutriments']['salt_100g'], element['url'],
+                                    element['categories_prev_tags'][-1]))
+        page += 1
+        result = requests.get(
+            "https://fr.openfoodfacts.org/cgi/search.pl?page_size=1000&page={}&action=process&json=1".format(
+                page)).json()
+        print(len(products), " produits...")
+        print("Etape : ", page, "/180")
+    for i in range(len(products)):
+        save_product(products[i])
 
 
 def categories_browser():
@@ -70,7 +105,7 @@ def categories_browser():
     page_min = 0
     page_max = 10
     while "user won't quit":
-        categories = get_categories()
+        categories = get_categories_from_db()
         print("Il y a {} catégories.".format(len(categories)))
         print("Sélectionnez une catégorie:")
 
@@ -102,17 +137,16 @@ def categories_browser():
             page_min -= 10
 
         if uinput.isdigit():
-            category_product_browser(int(uinput)-1)
+            category_product_browser(int(uinput)-1, categories[int(uinput)-1].prod_cat)
             continue
 
 
-def category_product_browser(category_id):
+def category_product_browser(id, category_id):
     global categories
     category_page = 1
-    category_products = get_products_from_category(categories[category_id].url, category_page)
+    category_products = create_products_list_from_category(category_id)
     while "user won't quit":
-        print("Affichage des produits de la catégorie {} | Page : {}".format(categories[category_id].name,
-                                                                             category_page))
+        print("Affichage des produits de la catégorie {} | Page : {}".format(categories[id].name, category_page))
         for i in range(min(20, len(category_products))):
             print("{} - {} {}".format(i+1, category_products[i].name, category_products[i].brands))
 
@@ -124,13 +158,27 @@ def category_product_browser(category_id):
             break
         if uinput == '>':
             category_page += 1
-            category_products = get_products_from_category(categories[category_id].url, category_page)
         if uinput == '<' and category_page > 1:
             category_page -= 1
-            category_products = get_products_from_category(categories[category_id].url, category_page)
         if uinput.isdigit():
             product_browser(category_products[int(uinput) - 1], categories[category_id].name)
             continue
+
+
+def create_products_list_from_category(category_id):
+    global categories
+    global products
+    products = get_products_from_db()
+    category_products = list()
+    for element in products:
+        if element.category != category_id:
+            continue
+        category_products.append(Product(element['id'], element['product_name'], element['brands'],
+                                         element['nutrition_grade_fr'], element['nutriments']['fat_100g'],
+                                         element['nutriments']['saturated-fat_100g'],
+                                         element['nutriments']['sugars_100g'], element['nutriments']['salt_100g'],
+                                         element['url'], element['categories_prev_tags'][-1]))
+    return category_products
 
 
 def product_browser(product, category_name):
@@ -228,46 +276,30 @@ def get_substitutes(product):
     return products
 
 
-def get_products_from_category(url, page):
-    result = requests.get("{}/{}.json".format(url, page)).json()
-    products = list()
-    for element in result['products']:
-        # Check for data matching
-        if not all(tag in element for tag in ("product_name", "brands", "id", "nutrition_grade_fr", "url",
-                                              "categories_prev_tags")):
-            continue
-        if not all(tag in element['nutriments'] for tag in ("fat_100g", "saturated-fat_100g",
-                                                            "sugars_100g", "salt_100g")):
-            continue
-
-        products.append(Product(element['id'], element['product_name'], element['brands'],
-                                element['nutrition_grade_fr'], element['nutriments']['fat_100g'],
-                                element['nutriments']['saturated-fat_100g'], element['nutriments']['sugars_100g'],
-                                element['nutriments']['salt_100g'], element['url'],
-                                element['categories_prev_tags'][-1]))
-    return products
-
-
 def save_product(product):
     """Save the selected product in the DB"""
     cursor = cnx.cursor(pymysql.cursors.DictCursor)
     cursor.execute("SELECT * FROM Products")
     result = cursor.fetchall()
     exist = 0
+    print(product.url)
     for element in result:
         # Test if the product already exist in the DB
         if element['url'] == product.url:
             exist = 1
-            break
     if exist == 1:
         print("Produit déjà enregistré.")
     else:
-        cursor.execute('INSERT INTO Products(name, brands, url, nutrition_grade, fat, saturated_fat, sugars, salt, category)\
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)', (product.name, product.brands, product.url,
-                                                                   product.nutrition_grade, product.fat,
-                                                                   product.saturated_fat, product.sugars, product.salt,
-                                                                   product.category))
-        print("Produit sauvegardé.")
+        try:
+            cursor.execute(
+                'INSERT INTO Products(name, brands, url, nutrition_grade, fat, saturated_fat, sugars, salt, category)\
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)', (product.name, product.brands, product.url,
+                                                               product.nutrition_grade, product.fat,
+                                                               product.saturated_fat, product.sugars, product.salt,
+                                                               product.category))
+            print("Produit sauvegardé.")
+        except Exception as e:
+            print("[Erreur] ", e)
     cursor.close()
     cnx.commit()
 
@@ -309,13 +341,13 @@ def product_browser_from_db():
 def user_menu():
     global new
     if new == 1:
-        print("Nouvelle database, mise à jour des catégories...")
-        update_categories()
+        print("Nouvelle base de données, mise à jour des données...\n(Cela va prendre du temps...)")
+        update()
 
     while "user won't quit":
         print("\n\t<__/ Menu Principal \__>")
         print("1 : Trouver un produit par catégorie")
-        print("2 : Afficher mes produits substitué")
+        print("2 : Afficher mes produits enregistré")
         print("3 : Mettre à jour les catégories")
         uinput = input("Entrez: Un numéro pour choisir un menu | 0 pour quitter\n")
 
@@ -326,8 +358,8 @@ def user_menu():
             product_browser_from_db()
             continue
         if uinput == '3':
-            print("Mise à jour des catégories en cours...")
-            update_categories()
+            print("Mise à jour des données...\n(Cela va prendre du temps...)")
+            update()
             continue
         if uinput == '0':
             break

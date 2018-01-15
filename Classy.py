@@ -1,7 +1,8 @@
 class Categorie:
     """OpenFoodFacts Categorie"""
-    def __init__(self, id, name, url):
+    def __init__(self, id, prod_cat, name, url):
         self.id = id
+        self.prod_cat = prod_cat
         self.name = name
         self.url = url
 

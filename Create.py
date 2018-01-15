@@ -2,7 +2,7 @@ import pymysql
 
 
 def exec_sql_file(cursor, sql_file):
-    print("[INFO] Executing SQL script file: '%s'" % sql_file)
+    print("[INFO] Execution du script SQL: '%s'" % sql_file)
     statement = ""
     for line in open(sql_file):
         if line.strip().startswith('--'):   # ignore sql comment lines
