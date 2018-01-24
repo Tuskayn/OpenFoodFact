@@ -1,7 +1,8 @@
 # OpenFoodFacts
 Project 5 OpenClassroom.
-https://github.com/Tuskayn/OpenFoodFacts
 
+https://github.com/Tuskayn/OpenFoodFacts
+https://trello.com/b/MUJujbBI/openfoodfacts
 ## Instructions
 
 ### Setup
@@ -18,7 +19,7 @@ From main menu you have 3 choice:
     - 1 : Search products from categories.
     - 2 : Search your saved products.
     - 3 : Update the OpenFoodfacts's data (This can take some times)
-When a product is selected ou can save/delete to your personnal database, search for a healthier product in the same 
+When a product is selected you can save/delete to your personnal database, search for a healthier product in the same 
 category.
 ```
 
