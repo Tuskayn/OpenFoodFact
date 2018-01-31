@@ -74,6 +74,7 @@ def update():
                        (element['id'], element['name'], element['url']))
     cnx.commit()
     cursor.close()
+    categories = get_categories_from_db()
     print("Données à jour.")
 
 
